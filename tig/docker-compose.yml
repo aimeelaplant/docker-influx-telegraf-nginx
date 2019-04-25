@@ -1,0 +1,71 @@
+version: "3.4"
+services:
+  certbot:
+    container_name: certbot
+    image: certbot/dns-route53:v0.30.0
+    entrypoint: >
+      sh -c "certbot certonly -n --dns-route53 --agree-tos --email ${CERTBOT_EMAIL} -d ${GF_SERVER_DOMAIN} &&
+      trap exit TERM; while :; do certbot renew; sleep 24h & wait $${!}; done;"
+    environment:
+      - "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}"
+      - "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}"
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+    logging:
+      options:
+        max-size: "25M"
+        max-file: "3"
+  influxdb:
+    container_name: influxdb
+    restart: always
+    image: influxdb:1.7-alpine
+    ports:
+      - "8086:8086" # http
+      - "8089:8089/udp" # udp
+    environment:
+      INFLUXDB_REPORTING_DISABLED: "true"
+      INFLUXDB_DATA_QUERY_LOG_ENABLED: "true"
+      INFLUXDB_HTTP_BIND_ADDRESS: "${HOST_ADDR}:8086"
+      INFLUXDB_HTTP_AUTH_ENABLED: "false"
+      INFLUXDB_ADMIN_USER: ${INFLUXDB_ADMIN_USER}
+      INFLUXDB_ADMIN_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD}
+      INFLUXDB_UDP_ENABLED: "true"
+      INFLUXDB_UDP_DATABASE: "metrics"
+      INFLUXDB_UDP_BIND_ADDRESS: "${HOST_ADDR}:8089"
+      INFLUXDB_RETENTION_ENABLED: "false"
+    volumes:
+      - influxdb:/var/lib/influxdb
+  grafana:
+    container_name: grafana
+    restart: always
+    image: grafana/grafana:5.4.3
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${CC_GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${CC_GRAFANA_ADMIN_PASSWORD}
+      GF_SECURITY_LOGIN_REMEMBER_DAYS: 30
+      GF_SECURITY_SECRET_KEY: ${CC_GRAFANA_SECRET_KEY}
+      GF_USERS_ALLOW_SIGNUP: "false"
+      GF_USERS_ALLOW_ORG_CREATE: "false"
+      GF_USERS_VIEWERS_CAN_EDIT: "false"
+      GF_METRICS_GRAPHITE: "false"
+      GF_SERVER_PROTOCOL: "https"
+      GF_SERVER_DOMAIN: "${GF_SERVER_DOMAIN}"
+      GF_SERVER_ENFORCE_DOMAIN: "true"
+      GF_SERVER_ROOT_URL: "${GF_SERVER_ROOT_URL}"
+      GF_SERVER_CERT_FILE: "/etc/letsencrypt/live/${GF_SERVER_DOMAIN}/fullchain.pem"
+      GF_SERVER_CERT_KEY: "/etc/letsencrypt/live/${GF_SERVER_DOMAIN}/privkey.pem"
+      GF_INSTALL_PLUGINS: "grafana-clock-panel,grafana-simple-json-datasource,grafana-piechart-panel,grafana-worldmap-panel"
+      GF_EXTERNAL_IMAGE_STORAGE_S3_BUCKET: "${GF_EXTERNAL_IMAGE_STORAGE_S3_BUCKET}"
+      GF_EXTERNAL_IMAGE_STORAGE_S3_REGION: "${GF_EXTERNAL_IMAGE_STORAGE_S3_REGION}"
+      GF_EXTERNAL_IMAGE_STORAGE_S3_ACCESS_KEY: ${GF_EXTERNAL_IMAGE_STORAGE_S3_ACCESS_KEY}
+      GF_EXTERNAL_IMAGE_STORAGE_S3_SECRET_KEY: ${GF_EXTERNAL_IMAGE_STORAGE_S3_ACCESS_KEY}
+      GF_SMTP_ENABLED: "true"
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - grafana-storage:/var/lib/grafana
+volumes:
+  letsencrypt:
+  grafana-storage:
+  influxdb:
